@@ -1,7 +1,14 @@
+// backend/middleware/auth.js - UPDATED
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
 
-const JWT_SECRET = 'your_jwt_secret_key_here'; // Use environment variable in production
+// IMPORTANT: Use environment variable, not hardcoded
+const JWT_SECRET = process.env.JWT_SECRET;
+
+if (!JWT_SECRET) {
+  console.error('FATAL ERROR: JWT_SECRET is not defined');
+  process.exit(1);
+}
 
 const generateToken = (userId) => {
   return jwt.sign({ userId }, JWT_SECRET, { expiresIn: '7d' });
