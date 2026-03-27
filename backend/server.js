@@ -1,3 +1,5 @@
+require('dotenv').config();
+
 const express = require('express');
 const cors = require('cors');
 const mongoose = require('mongoose');
@@ -320,9 +322,10 @@ app.get('/api/status', async (req, res) => {
   }
 });
 
-const PORT = 5000;
-app.listen(PORT, () => {
-  console.log(`\n🚀 Server running on port ${PORT}`);
+const PORT = process.env.PORT || 5000;
+
+app.listen(PORT, '0.0.0.0', () => {
+  console.log(`Server running on port ${PORT}`);
   console.log(`📦 API: http://localhost:${PORT}/api/products`);
   console.log(`👤 Register: POST http://localhost:${PORT}/api/users/register`);
   console.log(`🔐 Login: POST http://localhost:${PORT}/api/users/login`);
