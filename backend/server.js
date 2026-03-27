@@ -1,171 +1,105 @@
+// server.js - CORRECTED VERSION
 require('dotenv').config();
 
 const express = require('express');
 const cors = require('cors');
 const mongoose = require('mongoose');
-const bcrypt = require('bcryptjs');
-const jwt = require('jsonwebtoken');
 
 const app = express();
 
-// Middleware
+// ================= MIDDLEWARE =================
 app.use(cors());
 app.use(express.json());
 
+// ================= IMPORT MODELS (CORRECTED) =================
+// Instead of defining schemas in server.js, import from model files
+// Make sure your model files exist in the backend/models/ folder
+const User = require('./models/User');
+const Product = require('./models/Product');
+
 // ================= DB CONNECTION =================
-mongoose.connect(process.env.MONGO_URI)
-  .then(() => console.log('✅ MongoDB connected'))
-  .catch((err) => {
-    console.error('❌ MongoDB error:', err);
-    process.exit(1);
-  });
+// IMPORTANT: Use environment variable, not hardcoded
+const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/ecommerce';
 
-// ================= SCHEMAS =================
-const userSchema = new mongoose.Schema({
-  name: { type: String, required: true },
-  email: { type: String, required: true, unique: true },
-  password: { type: String, required: true },
-  isAdmin: { type: Boolean, default: false }
-}, { timestamps: true });
-
-// Hash password
-userSchema.pre('save', async function(next) {
-  if (!this.isModified('password')) return next();
-  this.password = await bcrypt.hash(this.password, 10);
-  next();
+mongoose.connect(MONGODB_URI, {
+  useNewUrlParser: true,
+  useUnifiedTopology: true,
+})
+.then(() => console.log('✅ MongoDB connected successfully'))
+.catch((err) => {
+  console.error('❌ MongoDB connection error:', err);
+  process.exit(1);
 });
-
-// Compare password
-userSchema.methods.comparePassword = async function(password) {
-  return await bcrypt.compare(password, this.password);
-};
-
-const User = mongoose.model('User', userSchema);
-
-// Product Schema
-const productSchema = new mongoose.Schema({
-  name: String,
-  description: String,
-  price: Number,
-  category: String,
-  imageUrl: String,
-  stock: Number,
-  rating: Number,
-  numReviews: Number
-}, { timestamps: true });
-
-const Product = mongoose.model('Product', productSchema);
 
 // ================= ROUTES =================
+// Import your route files (make sure they exist)
+app.use('/api/users', require('./routes/userRoutes'));
+app.use('/api/products', require('./routes/productRoutes'));
+app.use('/api/orders', require('./routes/orderRoutes'));
 
-// Register
-app.post('/api/users/register', async (req, res) => {
-  try {
-    const { name, email, password } = req.body;
-
-    const userExists = await User.findOne({ email });
-    if (userExists) return res.status(400).json({ message: 'User exists' });
-
-    const user = await User.create({ name, email, password });
-
-    const token = jwt.sign(
-      { userId: user._id },
-      process.env.JWT_SECRET,
-      { expiresIn: '7d' }
-    );
-
-    res.status(201).json({ ...user.toObject(), token });
-  } catch (err) {
-    res.status(500).json({ message: err.message });
-  }
-});
-
-// Login
-app.post('/api/users/login', async (req, res) => {
-  try {
-    const { email, password } = req.body;
-
-    const user = await User.findOne({ email });
-    if (!user || !(await user.comparePassword(password))) {
-      return res.status(401).json({ message: 'Invalid credentials' });
-    }
-
-    const token = jwt.sign(
-      { userId: user._id },
-      process.env.JWT_SECRET,
-      { expiresIn: '7d' }
-    );
-
-    res.json({ ...user.toObject(), token });
-  } catch (err) {
-    res.status(500).json({ message: err.message });
-  }
-});
-
-// Products
-app.get('/api/products', async (req, res) => {
-  try {
-    const page = parseInt(req.query.page) || 1;
-    const limit = parseInt(req.query.limit) || 12;
-    const keyword = req.query.keyword || '';
-    const category = req.query.category || '';
-
-    let query = {};
-
-    if (keyword) {
-      query.name = { $regex: keyword, $options: 'i' };
-    }
-
-    if (category) {
-      query.category = category;
-    }
-
-    const products = await Product.find(query)
-      .limit(limit)
-      .skip((page - 1) * limit);
-
-    const total = await Product.countDocuments(query);
-
-    res.json({
-      products,
-      page,
-      pages: Math.ceil(total / limit),
-      total
-    });
-  } catch (err) {
-    res.status(500).json({ message: err.message });
-  }
-});
-
-// Seed
+// ================= SEED ROUTE (for testing) =================
 app.get('/api/seed', async (req, res) => {
   try {
+    // Only use this in development
+    if (process.env.NODE_ENV === 'production') {
+      return res.status(403).json({ message: 'Seed endpoint disabled in production' });
+    }
+    
     await Product.deleteMany();
-    const inserted = await Product.insertMany([
-      { name: 'Headphones', price: 199 },
-      { name: 'Watch', price: 299 }
-    ]);
-    res.json({ inserted });
+    const products = [
+      { name: 'Headphones', price: 199, description: 'High quality headphones', category: 'electronics', imageUrl: 'https://via.placeholder.com/300', stock: 10, rating: 4.5, numReviews: 10 },
+      { name: 'Smart Watch', price: 299, description: 'Feature-rich smartwatch', category: 'electronics', imageUrl: 'https://via.placeholder.com/300', stock: 15, rating: 4.2, numReviews: 8 }
+    ];
+    const inserted = await Product.insertMany(products);
+    res.json({ message: 'Database seeded', count: inserted.length });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
 });
 
-// Status
+// ================= HEALTH CHECK =================
 app.get('/api/status', async (req, res) => {
-  const productCount = await Product.countDocuments();
-  const userCount = await User.countDocuments();
+  try {
+    const productCount = await Product.countDocuments();
+    const userCount = await User.countDocuments();
+    
+    res.json({
+      status: 'running',
+      environment: process.env.NODE_ENV,
+      timestamp: new Date().toISOString(),
+      uptime: process.uptime(),
+      database: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected',
+      productCount,
+      userCount
+    });
+  } catch (err) {
+    res.status(500).json({ 
+      status: 'error', 
+      message: err.message 
+    });
+  }
+});
 
-  res.json({
-    status: 'running',
-    productCount,
-    userCount
+// ================= ERROR HANDLING =================
+// 404 handler
+app.use((req, res) => {
+  res.status(404).json({ message: 'Route not found' });
+});
+
+// Global error handler
+app.use((err, req, res, next) => {
+  console.error('Error:', err.stack);
+  res.status(500).json({ 
+    message: 'Something went wrong!',
+    error: process.env.NODE_ENV === 'development' ? err.message : {}
   });
 });
 
-// ================= SERVER =================
+// ================= SERVER START =================
 const PORT = process.env.PORT || 5000;
 
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`🚀 Server running on port ${PORT}`);
+  console.log(`📡 Environment: ${process.env.NODE_ENV || 'development'}`);
+  console.log(`💾 Database: ${MONGODB_URI}`);
 });
