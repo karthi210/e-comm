@@ -16,8 +16,3 @@ services:
     ports:
       - "3000:3000"
 
-  mongo:
-    image: mongo
-    container_name: mongo
-    ports:
-      - "27017:27017"
